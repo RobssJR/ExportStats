@@ -12,7 +12,6 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Minecraft Server Telemetry", layout="wide", initial_sidebar_state="expanded")
 st_autorefresh(interval=5000, key="data_refresh")
 
-# Aumenta o tamanho dos textos e emojis das métricas para não ficarem minúsculos
 st.markdown("""
     <style>
     [data-testid="stMetricLabel"] {
@@ -68,6 +67,32 @@ TRADUCOES_METRICA = traducoes.get("metricas", {})
 def formatar_nome_metrica(metrica):
     if metrica in TRADUCOES_METRICA:
         return TRADUCOES_METRICA[metrica]
+        
+    nomes_dist = {
+        "climb_one_cm": "Distance Climbed",
+        "crouch_one_cm": "Distance Crouched",
+        "fall_one_cm": "Distance Fallen",
+        "fly_one_cm": "Distance Flown",
+        "sprint_one_cm": "Distance Sprinted",
+        "swim_one_cm": "Distance Swum",
+        "walk_one_cm": "Distance Walked",
+        "walk_on_water_one_cm": "Distance Walked on Water",
+        "walk_under_water_one_cm": "Distance Walked under Water",
+        "boat_one_cm": "Distance by Boat",
+        "aviate_one_cm": "Distance by Elytra",
+        "horse_one_cm": "Distance by Horse",
+        "minecart_one_cm": "Distance by Minecart",
+        "pig_one_cm": "Distance by Pig",
+        "strider_one_cm": "Distance by Strider"
+    }
+    
+    if metrica in nomes_dist:
+        return f"{nomes_dist[metrica]} (km)"
+    elif "one_cm" in metrica:
+        return metrica.replace("_one_cm", "").replace("_", " ").title() + " Distance (km)"
+    elif "time" in metrica:
+        return metrica.replace("_", " ").title() + " (h)"
+        
     return metrica.replace("_", " ").title()
 
 def classificar_emoji(item_id, categoria):
@@ -90,10 +115,20 @@ def classificar_emoji(item_id, categoria):
         if "honey" in item or "potion" in item: return "🍯"
         return "🍎"
 
+    # Emojis para Estatísticas Gerais
+    if "time" in item: return "⏱️"
+    if "boat" in item: return "🛶"
+    if "horse" in item: return "🐎"
+    if "aviate" in item or "elytra" in item or "fly" in item: return "🚀"
+    if "swim" in item or "water" in item: return "🏊"
+    if "climb" in item: return "🧗"
+    if "fall" in item: return "📉"
+    if "walk" in item or "sprint" in item or "crouch" in item or "sneak" in item or "one_cm" in item: return "👟"
+
+    # Combate e Mobs
     if "deaths" in item: return "☠️"
     if "mob_kills" in item: return "⚔️"
     if "player_kills" in item: return "🤺"
-    
     if "zombie" in item: return "🧟"
     if "skeleton" in item or "wither" in item: return "💀"
     if "spider" in item: return "🕷️"
@@ -109,6 +144,7 @@ def classificar_emoji(item_id, categoria):
     if "enderman" in item or "endermite" in item: return "👁️"
     if "guardian" in item: return "🐡"
     
+    # Itens Regulares
     if "sword" in item: return "🗡️"
     if "pickaxe" in item: return "⛏️"
     if "axe" in item: return "🪓"
@@ -117,7 +153,6 @@ def classificar_emoji(item_id, categoria):
     if "bow" in item: return "🏹"
     if "shield" in item: return "🛡️"
     if "helmet" in item or "chestplate" in item or "leggings" in item or "boots" in item: return "👕"
-    
     if "wood" in item or "log" in item or "planks" in item: return "🪵"
     if "stone" in item or "cobblestone" in item or "andesite" in item or "diorite" in item: return "🪨"
     if "dirt" in item or "grass" in item or "sand" in item: return "🟫"
@@ -163,11 +198,13 @@ def carregar_dados():
                 
                 for metrica_bruta, valor in metricas.items():
                     metrica_limpa = metrica_bruta.replace("minecraft:", "")
+                    
+                    # Converte ticks para horas (72000 ticks = 1 hora)
                     if "time" in metrica_limpa or "minute" in metrica_limpa:
                          valor = round(valor / 72000, 2)
                     elif "one_cm" in metrica_limpa:
-                         metrica_limpa = metrica_limpa.replace("one_cm", "meters")
-                         valor = round(valor / 100, 2)
+                         # Converte centímetros para quilómetros
+                         valor = round(valor / 100000, 2)
 
                     registros.append({
                         "Jogador": nome_jogador,
@@ -239,23 +276,14 @@ def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     
     if df_top[coluna_valor].sum() == 0: return 
     
-    # Altura dinâmica para o gráfico não esmagar as barras
     altura_dinamica = max(300, len(df_top) * 45)
     
     fig = px.bar(df_top, x=coluna_valor, y="Métrica", orientation='h', text=coluna_valor, title=titulo)
     fig.update_layout(
-        yaxis_title=None, 
-        xaxis_title=None, 
-        margin=dict(l=0, r=0, t=50, b=10), 
-        height=altura_dinamica,
-        font=dict(size=14),
-        title_font=dict(size=22, color='#FFAA00')
+        yaxis_title=None, xaxis_title=None, margin=dict(l=0, r=0, t=50, b=10), 
+        height=altura_dinamica, font=dict(size=14), title_font=dict(size=22, color='#FFAA00')
     )
-    fig.update_traces(
-        textposition='outside', 
-        textfont_size=15,
-        marker_color='#55FF55' # Verde clássico do Minecraft
-    )
+    fig.update_traces(textposition='outside', textfont_size=15, marker_color='#55FF55')
     st.plotly_chart(fig, use_container_width=True)
 
 def renderizar_itens_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
@@ -300,7 +328,7 @@ def renderizar_mobs_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
     renderizar_grafico_horizontal(df_dados, "Killed", "Top 15 Criaturas Eliminadas")
     st.markdown(f"#### 👾 {titulo}")
     
-    colunas_por_linha = 5 # Espaçamento melhorado
+    colunas_por_linha = 5
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -328,7 +356,7 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         renderizar_grafico_horizontal(df_dados, "Valor", f"Top 15 {titulo.replace('Registadas', '')}")
         
     st.markdown(f"#### {titulo}")
-    colunas_por_linha = 5 # Reduzido de 6 para 5 para dar mais espaço aos rótulos longos
+    colunas_por_linha = 5
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -336,9 +364,16 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         for j, item in enumerate(pedaco):
             with cols[j]:
                 icone = classificar_emoji(item["Métrica_ID"], item.get("Categoria", ""))
-                valor = int(item["Valor"]) if isinstance(item["Valor"], (int, float)) and item["Valor"].is_integer() else item["Valor"]
-                if valor > 0:
-                    st.metric(label=f"{icone} {item['Métrica']}", value=valor)
+                val = item["Valor"]
+                valor = val if isinstance(val, float) else (int(val) if isinstance(val, int) or val.is_integer() else val)
+                
+                if isinstance(valor, float):
+                    valor_str = f"{valor:.2f}"
+                else:
+                    valor_str = str(valor)
+
+                if val > 0:
+                    st.metric(label=f"{icone} {item['Métrica']}", value=valor_str)
                 else:
                     estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 17px; margin-bottom: -5px; font-weight: 600;'>{icone} {item['Métrica']}</p><h2 style='font-size: 2rem; margin-top: 0; font-weight: normal;'>0</h2></div>"
                     st.markdown(estilo, unsafe_allow_html=True)
@@ -373,7 +408,7 @@ if categoria_selecionada_visual == "🧭 Items":
         df_categoria = df_categoria.sort_values(by="Total_Interacoes", ascending=False)
     renderizar_itens_consolidados(df_categoria, "Registo de Itens")
 
-# 2. Mobs Hostis e Passivos (Inclui KPIs no topo)
+# 2. Mobs Hostis e Passivos
 elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)"]:
     exibir_kpis_topo(df_ativo)
     
@@ -417,7 +452,7 @@ elif categoria_selecionada_visual == "🍎 Food & Drinks":
     df_categoria = pd.DataFrame(dados_comida).sort_values(by="Valor", ascending=False)
     renderizar_grade_nativa(df_categoria, "Alimentação (Vezes Consumidas)", aplicar_filtro_zeros=False)
 
-# 4. Estatísticas Gerais (Organizadas em Sub-Abas)
+# 4. Estatísticas Gerais (Organizadas com a nova aba de Tempo)
 elif categoria_selecionada_visual == "📄 General":
     df_geral = df_ativo[(df_ativo["Categoria_Original"] == "custom") & (~df_ativo["Métrica_ID"].isin(["deaths", "mob_kills", "player_kills"]))]
     if ocultar_zerados: df_geral = df_geral[df_geral["Valor"] > 0]
@@ -425,7 +460,8 @@ elif categoria_selecionada_visual == "📄 General":
 
     def classificar_subcategoria(row):
         m = row["Métrica_ID"].lower()
-        if any(x in m for x in ["meter", "jump", "fly", "aviate", "swim", "walk", "crouch", "sprint", "fall", "boat", "horse", "sneak"]): return "🏃 Movimento"
+        if "time" in m or "minute" in m: return "⏱️ Tempo de Jogo"
+        if any(x in m for x in ["one_cm", "meter", "jump", "fly", "aviate", "swim", "walk", "crouch", "sprint", "fall", "boat", "horse", "sneak", "climb"]): return "🏃 Movimento"
         if any(x in m for x in ["interact", "open", "inspect", "pot", "use", "fill", "ring", "tune", "play", "enchant"]): return "🖐️ Interações"
         if any(x in m for x in ["damage", "sleep", "bed", "rest", "death", "drop"]): return "🛡️ Sobrevivência"
         if any(x in m for x in ["villager", "talked", "traded", "bred", "animal"]): return "🤝 Social & Comércio"
@@ -433,7 +469,11 @@ elif categoria_selecionada_visual == "📄 General":
         
     if not df_geral.empty:
         df_geral["Subcategoria"] = df_geral.apply(classificar_subcategoria, axis=1)
-        lista_subcategorias = sorted(df_geral["Subcategoria"].unique().tolist())
+        
+        # Garante ordem lógica das abas
+        ordem_abas = ["⏱️ Tempo de Jogo", "🏃 Movimento", "🖐️ Interações", "🛡️ Sobrevivência", "🤝 Social & Comércio", "⏱️ Diversos & Tempo"]
+        lista_subcategorias = [sub for sub in ordem_abas if sub in df_geral["Subcategoria"].unique().tolist()]
+        
         abas_gerais = st.tabs(lista_subcategorias)
         
         for i, subcat in enumerate(lista_subcategorias):
