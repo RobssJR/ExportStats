@@ -1,0 +1,19 @@
+{
+  "categorias": {
+    "custom": "Estatísticas Gerais",
+    "mined": "Blocos Minerados",
+    "killed": "Criaturas Eliminadas",
+    "crafted": "Itens Criados",
+    "picked_up": "Itens Apanhados",
+    "dropped": "Itens Caídos"
+  },
+  "metricas": {
+    "play_time": "Tempo Jogado (Horas)",
+    "deaths": "Mortes",
+    "walk_one_meters": "Distância Percorrida (m)",
+    "mob_kills": "Mobs Eliminados",
+    "jump": "Saltos",
+    "damage_dealt": "Dano Causado",
+    "damage_taken": "Dano Sofrido"
+  }
+}
