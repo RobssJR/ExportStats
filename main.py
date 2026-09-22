@@ -1,42 +1,38 @@
-from fastapi import FastAPI
+import streamlit as st
 import json
 import os
+import pandas as pd
 
-app = FastAPI(title="Minecraft Stats API")
+# Configuração da página
+st.set_page_config(page_title="Minecraft Server Telemetry", layout="wide")
+st.title("⛏️ Estatísticas do Servidor")
 
-# IMPORTANTE: Altere para o caminho absoluto ou relativo da raiz do seu servidor
-SERVER_DIR = "../"  # Exemplo: "/home/usuario/minecraft_server/"
+# Caminhos definidos
+SERVER_DIR = "../" 
 STATS_DIR = os.path.join(SERVER_DIR, "world/players/stats")
 USERCACHE = os.path.join(SERVER_DIR, "usercache.json")
 
-def obter_nomes_jogadores():
-    """Lê o usercache.json para mapear UUID -> Nickname"""
-    if not os.path.exists(USERCACHE):
-        return {}
-    with open(USERCACHE, "r") as f:
-        try:
-            cache = json.load(f)
-            return {jogador["uuid"]: jogador["name"] for jogador in cache}
-        except json.JSONDecodeError:
-            return {}
+@st.cache_data(ttl=60)
+def carregar_dados_locais():
+    # 1. Carrega o cache de nomes (UUID -> Nickname)
+    nomes = {}
+    if os.path.exists(USERCACHE):
+        with open(USERCACHE, "r") as f:
+            try:
+                cache = json.load(f)
+                nomes = {jogador["uuid"]: jogador["name"] for jogador in cache}
+            except json.JSONDecodeError:
+                pass
 
-@app.get("/api/v1/stats/all")
-def obter_todas_estatisticas():
-    """
-    Retorna o JSON completo estruturado por Jogador -> Categoria -> Métrica.
-    Converte automaticamente ticks para horas (para tempo de jogo) e 
-    centímetros para metros (para distância).
-    """
-    nomes = obter_nomes_jogadores()
-    resultado = []
-    
+    # 2. Processa as estatísticas
+    registros = []
     if not os.path.exists(STATS_DIR):
-        return {"erro": "Pasta de estatísticas não encontrada."}
+        return pd.DataFrame() # Retorna DataFrame vazio se a pasta não existir
 
     for arquivo in os.listdir(STATS_DIR):
         if arquivo.endswith(".json"):
             uuid = arquivo.replace(".json", "")
-            nome_jogador = nomes.get(uuid, f"Unknown_{uuid[:8]}")
+            nome_jogador = nomes.get(uuid, f"Desconhecido_{uuid[:8]}")
             caminho_arquivo = os.path.join(STATS_DIR, arquivo)
             
             with open(caminho_arquivo, "r") as f:
@@ -46,62 +42,72 @@ def obter_todas_estatisticas():
                     continue
             
             stats_nativas = dados.get("stats", {})
-            estatisticas_formatadas = {}
             
-            # Itera sobre as categorias (custom, mined, killed, etc)
+            # Navega pelas categorias e métricas do Minecraft
             for categoria_bruta, metricas in stats_nativas.items():
                 categoria_limpa = categoria_bruta.replace("minecraft:", "")
-                estatisticas_formatadas[categoria_limpa] = {}
                 
                 for metrica_bruta, valor in metricas.items():
                     metrica_limpa = metrica_bruta.replace("minecraft:", "")
                     
-                    # Conversões úteis para telemetria
-                    # 1 segundo = 20 ticks. 1 hora = 72000 ticks
+                    # Converte ticks para horas
                     if "time" in metrica_limpa or "minute" in metrica_limpa:
-                         # Retorna em horas com 2 casas decimais
                          valor = round(valor / 72000, 2)
                     
-                    # Minecraft salva distâncias em centímetros. Converte para metros.
+                    # Converte centímetros para metros
                     elif "one_cm" in metrica_limpa:
                          metrica_limpa = metrica_limpa.replace("one_cm", "meters")
                          valor = round(valor / 100, 2)
 
-                    estatisticas_formatadas[categoria_limpa][metrica_limpa] = valor
-            
-            # Adiciona ao array de resultados
-            resultado.append({
-                "player": nome_jogador,
-                "uuid": uuid,
-                "stats": estatisticas_formatadas
-            })
-            
-    return resultado
+                    registros.append({
+                        "Jogador": nome_jogador,
+                        "Categoria": categoria_limpa,
+                        "Métrica": metrica_limpa,
+                        "Valor": valor
+                    })
+                    
+    return pd.DataFrame(registros)
 
-@app.get("/api/v1/ranking/{categoria}/{metrica}")
-def obter_ranking(categoria: str, metrica: str):
-    """
-    Retorna um ranking ordenado (maior para menor) de uma métrica específica.
-    Exemplo: /api/v1/ranking/custom/play_time
-    """
-    todos_dados = obter_todas_estatisticas()
-    ranking = []
+df = carregar_dados_locais()
+
+if df.empty:
+    st.warning(f"Nenhum dado encontrado. Verifique se o diretório existe: {os.path.abspath(STATS_DIR)}")
+else:
+    # ---- BARRA LATERAL (Filtros) ----
+    st.sidebar.header("Filtros do Ranking")
     
-    if isinstance(todos_dados, dict) and "erro" in todos_dados:
-        return todos_dados
+    lista_categorias = df["Categoria"].unique()
+    categoria_selecionada = st.sidebar.selectbox("Selecione a Categoria", lista_categorias)
+    
+    # Filtra as métricas com base na categoria escolhida
+    df_categoria = df[df["Categoria"] == categoria_selecionada]
+    lista_metricas = df_categoria["Métrica"].unique()
+    metrica_selecionada = st.sidebar.selectbox("Selecione a Métrica", lista_metricas)
 
-    for jogador_data in todos_dados:
-        # Busca o valor na estrutura aninhada
-        try:
-            valor = jogador_data["stats"][categoria][metrica]
-            if valor > 0:
-                ranking.append({
-                    "player": jogador_data["player"],
-                    "value": valor
-                })
-        except KeyError:
-            continue
-            
-    # Ordena do maior para o menor
-    ranking.sort(key=lambda x: x["value"], reverse=True)
-    return ranking
+    # ---- PROCESSAMENTO DO RANKING ----
+    df_ranking = df_categoria[df_categoria["Métrica"] == metrica_selecionada]
+    df_ranking = df_ranking.sort_values(by="Valor", ascending=False).reset_index(drop=True)
+    df_exibicao = df_ranking[["Jogador", "Valor"]]
+
+    # ---- INTERFACE PRINCIPAL ----
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader(f"🏆 Ranking: {metrica_selecionada}")
+        st.dataframe(
+            df_exibicao,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Jogador": st.column_config.TextColumn("Jogador"),
+                "Valor": st.column_config.NumberColumn("Pontuação / Valor", format="%.2f")
+            }
+        )
+        
+    with col2:
+        st.subheader("Gráfico Comparativo")
+        st.bar_chart(df_exibicao.set_index("Jogador"))
+
+    if st.button("Atualizar Dados Agora"):
+        st.cache_data.clear()
+        st.rerun()
