@@ -141,88 +141,134 @@ if jogador_selecionado == "Visão Geral do Servidor":
             exibir_grafico_pizza(top_tempo)
 
 else:
-    # ---- PÁGINA ESPECÍFICA DO JOGADOR ----
     st.markdown(f"### 👤 Perfil do Jogador: **{jogador_selecionado}**")
     df_jogador = df[df["Jogador"] == jogador_selecionado]
     
-    def obter_valor_jogador(metrica_id):
-        try:
-            return df_jogador[df_jogador["Métrica_ID"] == metrica_id]["Valor"].values[0]
-        except IndexError:
-            return 0
-
-    # Cartões de Métricas Principais
-    tempo_jogado = obter_valor_jogador("play_time")
-    mortes = obter_valor_jogador("deaths")
-    mobs_mortos = obter_valor_jogador("mob_kills")
-    distancia = obter_valor_jogador("walk_meters")
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(label="Tempo Jogado", value=f"{tempo_jogado:.2f} h")
-    col2.metric(label="Total de Mortes", value=int(mortes))
-    col3.metric(label="Mobs Eliminados", value=int(mobs_mortos))
-    col4.metric(label="Distância Andada", value=f"{distancia/1000:.2f} km")
+    # ---- BARRA LATERAL (Filtros de Inventário) ----
+    # Simula a barra lateral esquerda da sua imagem de referência
+    st.sidebar.markdown("### 🔍 Filtros de Busca")
+    termo_busca = st.sidebar.text_input("Buscar item/bloco...", "").lower()
     
-    st.markdown("---")
-    st.subheader("📊 Estatísticas Detalhadas")
-    
-    # Levanta todas as categorias existentes para este jogador específico
-    categorias_jogador = df_jogador["Categoria"].unique().tolist()
-    
-    # Força "Estatísticas Gerais" a ser sempre a primeira aba, se existir
-    if "Estatísticas Gerais" in categorias_jogador:
-        categorias_jogador.remove("Estatísticas Gerais")
-        categorias_jogador.insert(0, "Estatísticas Gerais")
+    # ---- CSS CUSTOMIZADO (Estilo Minecraft GUI) ----
+    st.markdown("""
+        <style>
+        .mc-container {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border: 2px solid #3a3a3a;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .mc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+            gap: 4px;
+        }
+        .mc-slot {
+            width: 48px;
+            height: 48px;
+            background-color: #8b8b8b;
+            border: 2px solid;
+            border-color: #373737 #fff #fff #373737;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .mc-slot:hover {
+            background-color: #a8a8a8;
+            cursor: crosshair;
+        }
+        .mc-slot img {
+            width: 32px;
+            height: 32px;
+            image-rendering: pixelated; /* Mantém o estilo 8-bit */
+        }
+        .mc-badge {
+            position: absolute;
+            bottom: 0;
+            right: 2px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            font-family: monospace;
+            text-shadow: 2px 2px 0 #3f3f3f, -1px -1px 0 #3f3f3f, 1px -1px 0 #3f3f3f, -1px 1px 0 #3f3f3f, 1px 1px 0 #3f3f3f;
+        }
+        .mc-tooltip {
+            visibility: hidden;
+            background-color: #110211;
+            color: #55FF55;
+            text-align: center;
+            padding: 5px 10px;
+            border: 2px solid #2a042a;
+            border-radius: 3px;
+            position: absolute;
+            z-index: 100;
+            bottom: 110%;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-family: monospace;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+        }
+        .mc-slot:hover .mc-tooltip {
+            visibility: visible;
+        }
+        .categoria-titulo {
+            color: #FFAA00;
+            font-family: monospace;
+            margin-bottom: 10px;
+            margin-top: 5px;
+            text-shadow: 1px 1px 0 #3f3f3f;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    # Mapeamento de ícones para as abas
-    icones_cat = {
-        "Estatísticas Gerais": "⚙️",
-        "Blocos Minerados": "⛏️",
-        "Criaturas Eliminadas": "⚔️",
-        "Itens Criados": "🛠️",
-        "Itens Apanhados": "🎒",
-        "Itens Caídos": "🗑️"
-    }
-    
-    # Gera os títulos das abas com ícones dinamicamente
-    titulos_abas = [f"{icones_cat.get(cat, '📁')} {cat}" for cat in categorias_jogador]
-    abas = st.tabs(titulos_abas)
-
-    # Preenche cada aba com todas as métricas correspondentes
-    for i, cat in enumerate(categorias_jogador):
-        with abas[i]:
-            df_cat = df_jogador[df_jogador["Categoria"] == cat]
+    # Função auxiliar para renderizar a grade HTML
+    def renderizar_grade_inventario(df_dados, titulo):
+        # Filtra os dados pela barra de busca
+        if termo_busca:
+            df_dados = df_dados[df_dados["Métrica"].str.lower().str.contains(termo_busca) | df_dados["Métrica_ID"].str.lower().str.contains(termo_busca)]
             
-            # Divide a aba em duas colunas (Gráfico à esquerda, Tabela completa à direita)
-            col_grafico, col_tabela = st.columns([1, 1.2])
-            
-            with col_grafico:
-                st.markdown(f"**Top Destaques**")
-                df_grafico = df_cat
-                
-                # Na aba geral, remove as métricas de tempo/distância para não esmagar o gráfico de pizza
-                if cat == "Estatísticas Gerais":
-                    df_grafico = df_cat[~df_cat["Métrica_ID"].isin(["play_time", "walk_meters", "crouch_meters", "sprint_meters", "time_since_death", "time_since_rest"])]
-                
-                if not df_grafico.empty:
-                    top_grafico = df_grafico.groupby("Métrica")["Valor"].sum().sort_values(ascending=False)
-                    exibir_grafico_pizza(top_grafico)
-                else:
-                    st.info("Gráfico não disponível para estes dados.")
+        if df_dados.empty:
+            return
 
-            with col_tabela:
-                st.markdown(f"**Lista Completa**")
-                # Prepara o DataFrame com 100% dos dados ordenados do maior para o menor
-                df_tabela = df_cat[["Métrica", "Valor"]].sort_values(by="Valor", ascending=False).reset_index(drop=True)
-                
-                # Renderiza a tabela com altura fixa para criar uma barra de rolagem interna limpa
-                st.dataframe(
-                    df_tabela,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=350,
-                    column_config={
-                        "Métrica": st.column_config.TextColumn("Métrica / Item"),
-                        "Valor": st.column_config.NumberColumn("Quantidade", format="%g")
-                    }
-                )
+        html = f'<div class="mc-container"><h4 class="categoria-titulo">{titulo}</h4><div class="mc-grid">'
+        
+        # Pega as texturas de um repositório público de assets do Minecraft
+        base_url_block = "https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/block/"
+        base_url_item = "https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/item/"
+        
+        for _, row in df_dados.iterrows():
+            id_item = row["Métrica_ID"]
+            nome_limpo = row["Métrica"]
+            valor = int(row["Valor"]) if row["Valor"].is_integer() else f"{row['Valor']:.1f}"
+            
+            # Tenta prever se é um bloco ou item baseado no nome para puxar a textura certa
+            url_img = base_url_block + f"{id_item}.png"
+            if "pickaxe" in id_item or "sword" in id_item or "apple" in id_item or "ingot" in id_item:
+                url_img = base_url_item + f"{id_item}.png"
+            
+            # Monta o slot individual
+            html += f"""
+            <div class="mc-slot">
+                <img src="{url_img}" onerror="this.src='https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/item/barrier.png';">
+                <div class="mc-badge">{valor}</div>
+                <span class="mc-tooltip">{nome_limpo}<br><span style="color:#AAAAAA">{valor}x</span></span>
+            </div>
+            """
+            
+        html += '</div></div>'
+        st.markdown(html, unsafe_allow_html=True)
+
+    # Renderiza as grades baseadas nas categorias exatas da sua imagem
+    st.subheader("🎒 Inventário de Estatísticas")
+    
+    df_mined = df_jogador[df_jogador["Categoria"] == "Blocos Minerados"].sort_values(by="Valor", ascending=False)
+    renderizar_grade_inventario(df_mined, "🧊 Blocos Minerados (Natural & Building Blocks)")
+    
+    df_crafted = df_jogador[df_jogador["Categoria"] == "Itens Criados"].sort_values(by="Valor", ascending=False)
+    renderizar_grade_inventario(df_crafted, "🛠️ Itens Criados (Functional Blocks & Items)")
+    
+    df_killed = df_jogador[df_jogador["Categoria"] == "Criaturas Eliminadas"].sort_values(by="Valor", ascending=False)
+    renderizar_grade_inventario(df_killed, "⚔️ Criaturas Eliminadas")
