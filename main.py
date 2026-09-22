@@ -14,7 +14,6 @@ st_autorefresh(interval=5000, key="data_refresh")
 
 st.markdown("""
     <style>
-    /* Ajustes globais de fontes para responsividade */
     [data-testid="stMetricLabel"] {
         font-size: 15px !important;
         font-weight: 600 !important;
@@ -22,13 +21,9 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         font-size: 1.7rem !important;
     }
-    
-    /* Garante que os containers e caixas de código se adaptem a telas menores */
     .stCodeBlock {
         width: 100% !important;
     }
-    
-    /* Media query para dispositivos móveis e telas estreitas */
     @media (max-width: 768px) {
         [data-testid="stMetricValue"] {
             font-size: 1.3rem !important;
@@ -54,6 +49,14 @@ HOSTILE_MOBS = [
     "pillager", "ravager", "guardian", "elder_guardian", "shulker", 
     "endermite", "blaze", "ghast", "wither_skeleton", "hoglin", "zoglin", 
     "piglin_brute", "warden", "wither", "ender_dragon"
+]
+
+PASSIVE_MOBS = [
+    "pig", "cow", "sheep", "chicken", "horse", "donkey", "mule", 
+    "llama", "trader_llama", "cat", "ocelot", "wolf", "fox", "panda", 
+    "polar_bear", "rabbit", "turtle", "parrot", "bee", "strider", 
+    "axolotl", "goat", "frog", "tadpole", "allay", "camel", "sniffer", 
+    "villager", "wandering_trader", "iron_golem", "snow_golem", "bat", "squid", "glow_squid", "dolphin"
 ]
 
 FOOD_ITEMS = [
@@ -104,6 +107,8 @@ def formatar_nome_metrica(metrica):
     
     if metrica in nomes_dist:
         return f"{nomes_dist[metrica]} (km)"
+    elif metrica == "jump":
+        return "Jumps"
     elif "one_cm" in metrica:
         return metrica.replace("_one_cm", "").replace("_", " ").title() + " Distance (km)"
     elif "time" in metrica:
@@ -257,10 +262,26 @@ opcoes_menu = {
 
 categoria_selecionada_visual = st.sidebar.selectbox("Menu", list(opcoes_menu.keys()))
 ocultar_zerados = st.sidebar.checkbox("Ocultar itens não encontrados", value=True)
+
+# Novo filtro de ordenação
+ordem_selecionada = st.sidebar.selectbox(
+    "Ordenar por:",
+    ["Maior Quantidade", "Menor Quantidade", "Alfabético (A-Z)"]
+)
+
 termo_busca = st.sidebar.text_input("Pesquisar na categoria...", "").lower()
 
+def aplicar_ordenacao(df_ordenar, coluna_valor="Valor"):
+    if df_ordenar.empty: return df_ordenar
+    if ordem_selecionada == "Maior Quantidade":
+        return df_ordenar.sort_values(by=coluna_valor, ascending=False)
+    elif ordem_selecionada == "Menor Quantidade":
+        return df_ordenar.sort_values(by=coluna_valor, ascending=True)
+    else:
+        return df_ordenar.sort_values(by="Métrica", ascending=True)
+
 # ==========================================
-# MOTORES DE RENDERIZAÇÃO RESPONSIVOS
+# MOTORES DE RENDERIZAÇÃO
 # ==========================================
 def exibir_kpis_detalhados(df_dados):
     kpi_kills = df_dados[df_dados["Métrica_ID"] == "mob_kills"]["Valor"].sum()
@@ -314,6 +335,9 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         df_dados = df_dados[df_dados["Valor"] > 0]
     if termo_busca:
         df_dados = df_dados[df_dados["Métrica"].str.lower().str.contains(termo_busca) | df_dados["Métrica_ID"].str.lower().str.contains(termo_busca)]
+    
+    df_dados = aplicar_ordenacao(df_dados, coluna_valor="Valor")
+
     if df_dados.empty:
         st.info("Nenhum dado para mostrar.")
         return
@@ -323,7 +347,6 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         
     st.markdown(f"#### {titulo}")
     
-    # Reduz para 4 colunas em ecrãs menores de forma inteligente via Streamlit
     colunas_por_linha = 4
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
@@ -348,7 +371,7 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
     st.divider()
 
 # ==========================================
-# LÓGICA DE EXIBIÇÃO: VISÃO GERAL VS JOGADOR
+# CONJUNTO DE DADOS (VISÃO GERAL VS JOGADOR)
 # ==========================================
 if jogador_selecionado == "Visão Geral do Servidor":
     st.title("🌐 Visão Geral do Servidor")
@@ -357,7 +380,12 @@ if jogador_selecionado == "Visão Geral do Servidor":
     st.divider()
     
     exibir_kpis_detalhados(df)
-    df_ativo = df.groupby(["Categoria_Original", "Categoria", "Métrica_ID", "Métrica"], as_index=False)["Valor"].sum()
+    
+    # Exclui métricas acumuladas/pontuais (como time_since_death) na Visão Geral do Servidor
+    metricas_excluir_global = ["time_since_death", "time_since_rest"]
+    df_sem_acumulados = df[~df["Métrica_ID"].isin(metricas_excluir_global)]
+    
+    df_ativo = df_sem_acumulados.groupby(["Categoria_Original", "Categoria", "Métrica_ID", "Métrica"], as_index=False)["Valor"].sum()
     eh_visao_geral = True
 else:
     st.title(f"👤 {jogador_selecionado}")
@@ -390,14 +418,15 @@ if categoria_selecionada_visual == "🧭 Items":
     df_categoria = pd.DataFrame(list(dados_agrupados.values()))
     if not df_categoria.empty:
         df_categoria['Total_Interacoes'] = df_categoria['Criado'] + df_categoria['Usado'] + df_categoria['Minerado'] + df_categoria['Quebrado'] + df_categoria['Apanhado'] + df_categoria['Caído']
-        df_categoria = df_categoria.sort_values(by="Total_Interacoes", ascending=False)
         
     if ocultar_zerados: df_categoria = df_categoria[df_categoria['Total_Interacoes'] > 0]
+    
+    df_categoria = aplicar_ordenacao(df_categoria, coluna_valor="Total_Interacoes")
     
     renderizar_grafico_horizontal(df_categoria, "Total_Interacoes", "Top 15 Itens Mais Interagidos")
     st.markdown("#### 📦 Registo Completo de Itens")
     
-    colunas_por_linha = 3  # Layout adaptativo mais seguro para cartões largos
+    colunas_por_linha = 3
     itens = df_categoria.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -415,16 +444,17 @@ if categoria_selecionada_visual == "🧭 Items":
                     f"Dropped:       {int(item['Caído'])}", language="text"
                 )
 
-# 2. Mobs Hostis e Passivos
+# 2. Mobs Hostis e Passivos (Pokédex Completa)
 elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)"]:
     if not eh_visao_geral:
         exibir_kpis_detalhados(df_ativo)
         
     df_mobs_raw = df_ativo[df_ativo["Categoria_Original"].isin(["killed", "killed_by"])]
+    
     if categoria_selecionada_visual == "🧟 Hostile Mobs":
         lista_alvo = HOSTILE_MOBS
     else:
-        lista_alvo = df_mobs_raw[~df_mobs_raw["Métrica_ID"].isin(HOSTILE_MOBS)]["Métrica_ID"].unique()
+        lista_alvo = PASSIVE_MOBS
         
     dados_mobs = {}
     for mob in lista_alvo:
@@ -439,12 +469,12 @@ elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)
     df_categoria = pd.DataFrame(list(dados_mobs.values()))
     if not df_categoria.empty:
         df_categoria['Total_Interacoes'] = df_categoria['Killed'] + df_categoria['Killed_By']
-        df_categoria = df_categoria.sort_values(by="Total_Interacoes", ascending=False)
         
-    ignorar_zero = False if categoria_selecionada_visual == "🧟 Hostile Mobs" else True
-    if ignorar_zero and ocultar_zerados:
+    if ocultar_zerados and categoria_selecionada_visual == "🐷 Mobs (Passivos)":
         df_categoria = df_categoria[df_categoria['Total_Interacoes'] > 0]
         
+    df_categoria = aplicar_ordenacao(df_categoria, coluna_valor="Total_Interacoes")
+    
     renderizar_grafico_horizontal(df_categoria, "Killed", "Top 15 Criaturas Eliminadas")
     st.markdown("#### 👾 Registo de Combate")
     
@@ -476,10 +506,10 @@ elif categoria_selecionada_visual == "🍎 Food & Drinks":
             valor, nome = 0, formatar_nome_metrica(comida)
         dados_comida.append({"Métrica_ID": comida, "Métrica": nome, "Categoria": "Comida", "Valor": valor})
         
-    df_categoria = pd.DataFrame(dados_comida).sort_values(by="Valor", ascending=False)
+    df_categoria = pd.DataFrame(dados_comida)
     renderizar_grade_nativa(df_categoria, "Alimentação (Vezes Consumidas)", aplicar_filtro_zeros=False)
 
-# 4. Estatísticas Gerais (Com Sub-Abas Organizadas)
+# 4. Estatísticas Gerais (Sub-Abas Organizadas)
 elif categoria_selecionada_visual == "📄 General":
     df_geral = df_ativo[(df_ativo["Categoria_Original"] == "custom") & (~df_ativo["Métrica_ID"].isin(["deaths", "mob_kills", "player_kills"]))]
     if ocultar_zerados: df_geral = df_geral[df_geral["Valor"] > 0]
