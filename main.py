@@ -145,11 +145,10 @@ else:
     df_jogador = df[df["Jogador"] == jogador_selecionado]
     
     # ---- BARRA LATERAL (Filtros de Inventário) ----
-    # Simula a barra lateral esquerda da sua imagem de referência
     st.sidebar.markdown("### 🔍 Filtros de Busca")
     termo_busca = st.sidebar.text_input("Buscar item/bloco...", "").lower()
     
-    # ---- CSS CUSTOMIZADO (Estilo Minecraft GUI) ----
+    # ---- CSS CUSTOMIZADO (Estilo Minecraft GUI com Emojis) ----
     st.markdown("""
         <style>
         .mc-container {
@@ -174,15 +173,12 @@ else:
             display: flex;
             justify-content: center;
             align-items: center;
+            font-size: 24px; /* Tamanho do Emoji */
+            user-select: none;
         }
         .mc-slot:hover {
             background-color: #a8a8a8;
             cursor: crosshair;
-        }
-        .mc-slot img {
-            width: 32px;
-            height: 32px;
-            image-rendering: pixelated; /* Mantém o estilo 8-bit */
         }
         .mc-badge {
             position: absolute;
@@ -224,9 +220,56 @@ else:
         </style>
     """, unsafe_allow_html=True)
 
-    # Função auxiliar para renderizar a grade HTML
+    # ---- SISTEMA DE EMOJIS ----
+    def classificar_emoji(item_id, categoria):
+        item = str(item_id).lower()
+        
+        # Mobs e Entidades
+        if "zombie" in item: return "🧟"
+        if "skeleton" in item: return "💀"
+        if "spider" in item: return "🕷️"
+        if "creeper" in item: return "💥"
+        if "pig" in item or "hoglin" in item: return "🐷"
+        if "cow" in item: return "🐄"
+        if "sheep" in item: return "🐑"
+        if "chicken" in item: return "🐔"
+        if "villager" in item: return "🧔"
+        if "dragon" in item: return "🐉"
+        
+        # Ferramentas e Armas
+        if "sword" in item: return "🗡️"
+        if "pickaxe" in item: return "⛏️"
+        if "axe" in item: return "🪓"
+        if "hoe" in item: return "⛏️"
+        if "shovel" in item: return "🪏"
+        if "bow" in item: return "🏹"
+        if "shield" in item: return "🛡️"
+        if "helmet" in item or "chestplate" in item or "leggings" in item or "boots" in item: return "👕"
+        
+        # Blocos Naturais e Minérios
+        if "wood" in item or "log" in item or "planks" in item: return "🪵"
+        if "stone" in item or "cobblestone" in item or "andesite" in item or "diorite" in item: return "🪨"
+        if "dirt" in item or "grass" in item or "sand" in item: return "🟫"
+        if "leaves" in item or "sapling" in item: return "🌿"
+        if "diamond" in item or "emerald" in item or "lapis" in item: return "💎"
+        if "gold" in item or "iron" in item or "copper" in item: return "🪙"
+        if "coal" in item: return "⬛"
+        
+        # Itens Diversos
+        if "apple" in item or "bread" in item or "beef" in item or "porkchop" in item: return "🥩"
+        if "potion" in item or "bottle" in item: return "🧪"
+        if "bucket" in item: return "🪣"
+        if "boat" in item: return "🛶"
+        if "bed" in item: return "🛏️"
+        if "door" in item: return "🚪"
+        
+        # Fallbacks (Ícones padrão baseados na categoria)
+        if categoria == "Blocos Minerados": return "📦"
+        if categoria == "Itens Criados": return "🛠️"
+        if categoria == "Criaturas Eliminadas": return "🩸"
+        return "❓"
+
     def renderizar_grade_inventario(df_dados, titulo):
-        # Filtra os dados pela barra de busca
         if termo_busca:
             df_dados = df_dados[df_dados["Métrica"].str.lower().str.contains(termo_busca) | df_dados["Métrica_ID"].str.lower().str.contains(termo_busca)]
             
@@ -235,24 +278,18 @@ else:
 
         html = f'<div class="mc-container"><h4 class="categoria-titulo">{titulo}</h4><div class="mc-grid">'
         
-        # Pega as texturas de um repositório público de assets do Minecraft
-        base_url_block = "https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/block/"
-        base_url_item = "https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/item/"
-        
         for _, row in df_dados.iterrows():
             id_item = row["Métrica_ID"]
             nome_limpo = row["Métrica"]
+            categoria = row["Categoria"]
             valor = int(row["Valor"]) if row["Valor"].is_integer() else f"{row['Valor']:.1f}"
             
-            # Tenta prever se é um bloco ou item baseado no nome para puxar a textura certa
-            url_img = base_url_block + f"{id_item}.png"
-            if "pickaxe" in id_item or "sword" in id_item or "apple" in id_item or "ingot" in id_item:
-                url_img = base_url_item + f"{id_item}.png"
+            # Obtém o emoji através da função
+            icone_emoji = classificar_emoji(id_item, categoria)
             
-            # Monta o slot individual
             html += f"""
             <div class="mc-slot">
-                <img src="{url_img}" onerror="this.src='https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/master/assets/minecraft/textures/item/barrier.png';">
+                {icone_emoji}
                 <div class="mc-badge">{valor}</div>
                 <span class="mc-tooltip">{nome_limpo}<br><span style="color:#AAAAAA">{valor}x</span></span>
             </div>
@@ -261,7 +298,6 @@ else:
         html += '</div></div>'
         st.markdown(html, unsafe_allow_html=True)
 
-    # Renderiza as grades baseadas nas categorias exatas da sua imagem
     st.subheader("🎒 Inventário de Estatísticas")
     
     df_mined = df_jogador[df_jogador["Categoria"] == "Blocos Minerados"].sort_values(by="Valor", ascending=False)
