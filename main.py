@@ -295,6 +295,42 @@ def exibir_kpis_detalhados(df_dados):
     with col4: st.metric("🤺 PvP", int(kpi_player_kills))
     st.divider()
 
+def renderizar_seletor_comparativo_jogadores(df_origem):
+    st.markdown("### 🏆 Comparativo Direto entre Jogadores")
+    
+    # Cria uma lista limpa de todas as métricas disponíveis no servidor para seleção
+    metricas_disponiveis = df_origem[["Métrica_ID", "Métrica"]].drop_duplicates().sort_values("Métrica")
+    
+    # Transforma em um dicionário {Nome Formatado: ID_da_Metrica}
+    opcoes_metricas = dict(zip(metricas_disponiveis["Métrica"], metricas_disponiveis["Métrica_ID"]))
+    
+    # Caixa de seleção interativa para o utilizador escolher o que quer comparar
+    metrica_escolhida_nome = st.selectbox("Selecione a estatística para comparar:", list(opcoes_metricas.keys()))
+    metrica_escolhida_id = opcoes_metricas[metrica_escolhida_nome]
+    
+    # Filtra e soma os dados por jogador para a métrica escolhida
+    df_comp = df_origem[df_origem["Métrica_ID"] == metrica_escolhida_id]
+    if df_comp.empty:
+        st.info("Sem dados para esta métrica.")
+        return
+        
+    df_soma = df_comp.groupby("Jogador", as_index=False)["Valor"].sum()
+    df_soma = df_soma.sort_values("Valor", ascending=True)
+    
+    if df_soma["Valor"].sum() == 0:
+        st.info("Nenhum valor registado para esta métrica no servidor.")
+        return
+    
+    # Gera o gráfico de barras horizontal ordenado
+    fig = px.bar(df_soma, x="Valor", y="Jogador", orientation='h', text="Valor", title=f"Comparativo: {metrica_escolhida_nome}")
+    fig.update_layout(
+        yaxis_title=None, xaxis_title=None, margin=dict(l=0, r=0, t=40, b=10), 
+        height=350, font=dict(size=14), title_font=dict(size=18, color='#FFAA00')
+    )
+    fig.update_traces(textposition='outside', textfont_size=14, marker_color='#FFAAFF')
+    st.plotly_chart(fig, use_container_width=True)
+    st.divider()
+
 def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     if df_grafico.empty: return
     
@@ -384,7 +420,8 @@ if jogador_selecionado == "Visão Geral do Servidor":
     
     exibir_kpis_detalhados(df)
     
-    # Exclui métricas acumuladas/pontuais (como time_since_death) na Visão Geral do Servidor
+    renderizar_seletor_comparativo_jogadores(df)
+    
     metricas_excluir_global = ["time_since_death", "time_since_rest"]
     df_sem_acumulados = df[~df["Métrica_ID"].isin(metricas_excluir_global)]
     
@@ -456,6 +493,24 @@ elif categoria_selecionada_visual == "💎 Minérios":
     # Filtra apenas os blocos minerados que contêm termos de minérios
     df_mined_all = df_ativo[df_ativo["Categoria_Original"] == "mined"]
     df_categoria = df_mined_all[df_mined_all["Métrica_ID"].apply(lambda m: any(minerio in m.lower() for minerio in palavras_chave_minerios))]
+    
+    if not df_categoria.empty:
+        total_minerios_extraidos = df_categoria["Valor"].sum()
+        
+        df_apenas_minerios_mundo = df_ativo[
+            (df_ativo["Categoria_Original"] == "mined") & 
+            (df_ativo["Métrica_ID"].str.contains("ore|debris", case=False, na=False))
+        ]
+        total_blocos_minerios = df_apenas_minerios_mundo["Valor"].sum()
+        
+        col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+        col_kpi1.metric("💎 Total de Minérios (Valor)", int(total_minerios_extraidos))
+        col_kpi2.metric("🪨 Blocos de Minério Quebrados", int(total_blocos_minerios))
+        
+        # Exibe métrica informativa de proporção
+        proporcao = (total_minerios_extraidos / total_blocos_minerios) if total_blocos_minerios > 0 else 0
+        col_kpi3.metric("📊 Rácio de Extração (Média)", f"{proporcao:.2f}x")
+        st.divider()
     
     # Garante que minérios comuns do jogo apareçam na lista mesmo com 0 se o utilizador quiser ver a coleção completa
     minerios_padrao = [
