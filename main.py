@@ -6,7 +6,7 @@ app = FastAPI(title="Minecraft Stats API")
 
 # IMPORTANTE: Altere para o caminho absoluto ou relativo da raiz do seu servidor
 SERVER_DIR = "../"  # Exemplo: "/home/usuario/minecraft_server/"
-STATS_DIR = os.path.join(SERVER_DIR, "world/stats")
+STATS_DIR = os.path.join(SERVER_DIR, "world/players/stats")
 USERCACHE = os.path.join(SERVER_DIR, "usercache.json")
 
 def obter_nomes_jogadores():
