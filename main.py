@@ -7,10 +7,23 @@ import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
 # ==========================================
-# CONFIGURAÇÃO INICIAL E AUTO-REFRESH
+# CONFIGURAÇÃO INICIAL E CSS CUSTOMIZADO
 # ==========================================
 st.set_page_config(page_title="Minecraft Server Telemetry", layout="wide", initial_sidebar_state="expanded")
 st_autorefresh(interval=5000, key="data_refresh")
+
+# Aumenta o tamanho dos textos e emojis das métricas para não ficarem minúsculos
+st.markdown("""
+    <style>
+    [data-testid="stMetricLabel"] {
+        font-size: 17px !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 2rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 SERVER_DIR = "../" 
 STATS_DIR = os.path.join(SERVER_DIR, "world/players/stats")
@@ -196,14 +209,13 @@ ocultar_zerados = st.sidebar.checkbox("Ocultar itens não encontrados", value=Tr
 termo_busca = st.sidebar.text_input("Pesquisar na categoria...", "").lower()
 
 # ==========================================
-# DEFINIÇÃO DO CONJUNTO DE DADOS (GLOBAL vs PLAYER)
+# DEFINIÇÃO DO CONJUNTO DE DADOS
 # ==========================================
 if jogador_selecionado == "Visão Geral do Servidor":
     st.title("🌐 Visão Geral do Servidor")
     st.markdown("### 🗺️ Mapa ao Vivo")
     components.iframe("http://lucas-server:25566/#world:1006:60:-697:88:0:0:0:1:flat", height=450, scrolling=True)
     st.divider()
-    # Soma todas as estatísticas agrupando pela Métrica
     df_ativo = df.groupby(["Categoria_Original", "Categoria", "Métrica_ID", "Métrica"], as_index=False)["Valor"].sum()
 else:
     st.title(f"👤 {jogador_selecionado}")
@@ -222,14 +234,28 @@ def exibir_kpis_topo(df_dados):
 
 def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     if df_grafico.empty: return
-    # Pega os 15 maiores e inverte para o Plotly renderizar do topo para a base
     df_top = df_grafico.sort_values(coluna_valor, ascending=False).head(15)
     df_top = df_top.sort_values(coluna_valor, ascending=True)
     
-    if df_top[coluna_valor].sum() == 0: return # Não exibe gráfico se tudo for 0
+    if df_top[coluna_valor].sum() == 0: return 
+    
+    # Altura dinâmica para o gráfico não esmagar as barras
+    altura_dinamica = max(300, len(df_top) * 45)
     
     fig = px.bar(df_top, x=coluna_valor, y="Métrica", orientation='h', text=coluna_valor, title=titulo)
-    fig.update_layout(yaxis_title=None, xaxis_title="Quantidade", margin=dict(l=0, r=0, t=40, b=0), height=350)
+    fig.update_layout(
+        yaxis_title=None, 
+        xaxis_title=None, 
+        margin=dict(l=0, r=0, t=50, b=10), 
+        height=altura_dinamica,
+        font=dict(size=14),
+        title_font=dict(size=22, color='#FFAA00')
+    )
+    fig.update_traces(
+        textposition='outside', 
+        textfont_size=15,
+        marker_color='#55FF55' # Verde clássico do Minecraft
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 def renderizar_itens_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
@@ -274,7 +300,7 @@ def renderizar_mobs_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
     renderizar_grafico_horizontal(df_dados, "Killed", "Top 15 Criaturas Eliminadas")
     st.markdown(f"#### 👾 {titulo}")
     
-    colunas_por_linha = 5
+    colunas_por_linha = 5 # Espaçamento melhorado
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -283,10 +309,10 @@ def renderizar_mobs_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
             with cols[j]:
                 icone = classificar_emoji(item["Métrica_ID"], "Mobs")
                 if item['Total_Interacoes'] > 0:
-                    st.markdown(f"**{icone} {item['Métrica']}**")
+                    st.markdown(f"<span style='font-size:17px; font-weight:600;'>{icone} {item['Métrica']}</span>", unsafe_allow_html=True)
                     st.code(f"Kills:     {int(item['Killed'])}\nKilled By: {int(item['Killed_By'])}", language="text")
                 else:
-                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 14px; margin-bottom: 5px; font-weight: bold;'>{icone} {item['Métrica']}</p><div style='background-color: #0e1117; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px;'>Kills:     0<br>Killed By: 0</div></div>"
+                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 17px; margin-bottom: 5px; font-weight: 600;'>{icone} {item['Métrica']}</p><div style='background-color: #0e1117; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px;'>Kills:     0<br>Killed By: 0</div></div>"
                     st.markdown(estilo, unsafe_allow_html=True)
 
 def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar_grafico=True):
@@ -302,7 +328,7 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         renderizar_grafico_horizontal(df_dados, "Valor", f"Top 15 {titulo.replace('Registadas', '')}")
         
     st.markdown(f"#### {titulo}")
-    colunas_por_linha = 6
+    colunas_por_linha = 5 # Reduzido de 6 para 5 para dar mais espaço aos rótulos longos
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -314,7 +340,7 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
                 if valor > 0:
                     st.metric(label=f"{icone} {item['Métrica']}", value=valor)
                 else:
-                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 14px; margin-bottom: -5px;'>{icone} {item['Métrica']}</p><h2 style='font-size: 1.8rem; margin-top: 0; font-weight: normal;'>0</h2></div>"
+                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 17px; margin-bottom: -5px; font-weight: 600;'>{icone} {item['Métrica']}</p><h2 style='font-size: 2rem; margin-top: 0; font-weight: normal;'>0</h2></div>"
                     st.markdown(estilo, unsafe_allow_html=True)
     st.divider()
 
