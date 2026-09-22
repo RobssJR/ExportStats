@@ -7,19 +7,35 @@ import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
 # ==========================================
-# CONFIGURAÇÃO INICIAL E CSS CUSTOMIZADO
+# CONFIGURAÇÃO INICIAL E CSS RESPONSIVO
 # ==========================================
 st.set_page_config(page_title="Minecraft Server Telemetry", layout="wide", initial_sidebar_state="expanded")
 st_autorefresh(interval=5000, key="data_refresh")
 
 st.markdown("""
     <style>
+    /* Ajustes globais de fontes para responsividade */
     [data-testid="stMetricLabel"] {
-        font-size: 17px !important;
+        font-size: 15px !important;
         font-weight: 600 !important;
     }
     [data-testid="stMetricValue"] {
-        font-size: 2rem !important;
+        font-size: 1.7rem !important;
+    }
+    
+    /* Garante que os containers e caixas de código se adaptem a telas menores */
+    .stCodeBlock {
+        width: 100% !important;
+    }
+    
+    /* Media query para dispositivos móveis e telas estreitas */
+    @media (max-width: 768px) {
+        [data-testid="stMetricValue"] {
+            font-size: 1.3rem !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 13px !important;
+        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -115,7 +131,7 @@ def classificar_emoji(item_id, categoria):
         if "honey" in item or "potion" in item: return "🍯"
         return "🍎"
 
-    # Emojis para Estatísticas Gerais
+    if "jump" in item: return "🦘"
     if "time" in item: return "⏱️"
     if "boat" in item: return "🛶"
     if "horse" in item: return "🐎"
@@ -125,7 +141,6 @@ def classificar_emoji(item_id, categoria):
     if "fall" in item: return "📉"
     if "walk" in item or "sprint" in item or "crouch" in item or "sneak" in item or "one_cm" in item: return "👟"
 
-    # Combate e Mobs
     if "deaths" in item: return "☠️"
     if "mob_kills" in item: return "⚔️"
     if "player_kills" in item: return "🤺"
@@ -144,7 +159,6 @@ def classificar_emoji(item_id, categoria):
     if "enderman" in item or "endermite" in item: return "👁️"
     if "guardian" in item: return "🐡"
     
-    # Itens Regulares
     if "sword" in item: return "🗡️"
     if "pickaxe" in item: return "⛏️"
     if "axe" in item: return "🪓"
@@ -199,11 +213,11 @@ def carregar_dados():
                 for metrica_bruta, valor in metricas.items():
                     metrica_limpa = metrica_bruta.replace("minecraft:", "")
                     
-                    # Converte ticks para horas (72000 ticks = 1 hora)
-                    if "time" in metrica_limpa or "minute" in metrica_limpa:
+                    if metrica_limpa == "jump":
+                        pass
+                    elif "time" in metrica_limpa or "minute" in metrica_limpa:
                          valor = round(valor / 72000, 2)
                     elif "one_cm" in metrica_limpa:
-                         # Converte centímetros para quilómetros
                          valor = round(valor / 100000, 2)
 
                     registros.append({
@@ -246,27 +260,19 @@ ocultar_zerados = st.sidebar.checkbox("Ocultar itens não encontrados", value=Tr
 termo_busca = st.sidebar.text_input("Pesquisar na categoria...", "").lower()
 
 # ==========================================
-# DEFINIÇÃO DO CONJUNTO DE DADOS
+# MOTORES DE RENDERIZAÇÃO RESPONSIVOS
 # ==========================================
-if jogador_selecionado == "Visão Geral do Servidor":
-    st.title("🌐 Visão Geral do Servidor")
-    st.markdown("### 🗺️ Mapa ao Vivo")
-    components.iframe("http://lucas-server:25566/#world:1006:60:-697:88:0:0:0:1:flat", height=450, scrolling=True)
-    st.divider()
-    df_ativo = df.groupby(["Categoria_Original", "Categoria", "Métrica_ID", "Métrica"], as_index=False)["Valor"].sum()
-else:
-    st.title(f"👤 {jogador_selecionado}")
-    df_ativo = df[df["Jogador"] == jogador_selecionado]
-
-# ==========================================
-# MOTORES DE RENDERIZAÇÃO
-# ==========================================
-def exibir_kpis_topo(df_dados):
-    kpi_kills = df_dados[(df_dados["Métrica_ID"] == "mob_kills")]["Valor"].sum()
-    kpi_deaths = df_dados[(df_dados["Métrica_ID"] == "deaths")]["Valor"].sum()
-    col1, col2, col3 = st.columns([1, 1, 2])
-    col1.metric("⚔️ Total Mobs Eliminados", int(kpi_kills))
-    col2.metric("☠️ Mortes Globais", int(kpi_deaths))
+def exibir_kpis_detalhados(df_dados):
+    kpi_kills = df_dados[df_dados["Métrica_ID"] == "mob_kills"]["Valor"].sum()
+    kpi_deaths = df_dados[df_dados["Métrica_ID"] == "deaths"]["Valor"].sum()
+    kpi_player_kills = df_dados[df_dados["Métrica_ID"] == "player_kills"]["Valor"].sum()
+    kd_ratio = round(kpi_kills / kpi_deaths, 2) if kpi_deaths > 0 else float(kpi_kills)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.metric("⚔️ Mobs", int(kpi_kills))
+    with col2: st.metric("☠️ Mortes", int(kpi_deaths))
+    with col3: st.metric("📊 K/D", kd_ratio)
+    with col4: st.metric("🤺 PvP", int(kpi_player_kills))
     st.divider()
 
 def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
@@ -281,67 +287,27 @@ def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     fig = px.bar(df_top, x=coluna_valor, y="Métrica", orientation='h', text=coluna_valor, title=titulo)
     fig.update_layout(
         yaxis_title=None, xaxis_title=None, margin=dict(l=0, r=0, t=50, b=10), 
-        height=altura_dinamica, font=dict(size=14), title_font=dict(size=22, color='#FFAA00')
+        height=altura_dinamica, font=dict(size=14), title_font=dict(size=20, color='#FFAA00')
     )
-    fig.update_traces(textposition='outside', textfont_size=15, marker_color='#55FF55')
+    fig.update_traces(textposition='outside', textfont_size=14, marker_color='#55FF55')
     st.plotly_chart(fig, use_container_width=True)
 
-def renderizar_itens_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
-    if aplicar_filtro_zeros and ocultar_zerados:
-        df_dados = df_dados[df_dados['Total_Interacoes'] > 0]
-    if termo_busca:
-        df_dados = df_dados[df_dados["Métrica"].str.lower().str.contains(termo_busca) | df_dados["Métrica_ID"].str.lower().str.contains(termo_busca)]
-    if df_dados.empty:
-        st.info("Nenhum dado para mostrar.")
-        return
-        
-    renderizar_grafico_horizontal(df_dados, "Total_Interacoes", "Top 15 Itens Mais Interagidos")
-    st.markdown(f"#### 📦 {titulo}")
+def renderizar_grafico_comparativo_jogadores(df_origem, metrica_filtro_id, titulo):
+    df_comp = df_origem[df_origem["Métrica_ID"] == metrica_filtro_id]
+    if df_comp.empty: return
     
-    colunas_por_linha = 4
-    itens = df_dados.to_dict('records')
-    for i in range(0, len(itens), colunas_por_linha):
-        cols = st.columns(colunas_por_linha)
-        pedaco = itens[i:i + colunas_por_linha]
-        for j, item in enumerate(pedaco):
-            with cols[j]:
-                icone = classificar_emoji(item["Métrica_ID"], "Itens")
-                st.markdown(f"**{icone} {item['Métrica']}**")
-                st.caption(f"`minecraft:{item['Métrica_ID']}`")
-                st.code(
-                    f"Times Crafted: {int(item['Criado'])}\n"
-                    f"Times Used:    {int(item['Usado'])}\n"
-                    f"Times Broken:  {int(item['Minerado'] + item['Quebrado'])}\n"
-                    f"Picked Up:     {int(item['Apanhado'])}\n"
-                    f"Dropped:       {int(item['Caído'])}", language="text"
-                )
-
-def renderizar_mobs_consolidados(df_dados, titulo, aplicar_filtro_zeros=True):
-    if aplicar_filtro_zeros and ocultar_zerados:
-        df_dados = df_dados[df_dados['Total_Interacoes'] > 0]
-    if termo_busca:
-        df_dados = df_dados[df_dados["Métrica"].str.lower().str.contains(termo_busca) | df_dados["Métrica_ID"].str.lower().str.contains(termo_busca)]
-    if df_dados.empty:
-        st.info("Nenhum dado para mostrar.")
-        return
-
-    renderizar_grafico_horizontal(df_dados, "Killed", "Top 15 Criaturas Eliminadas")
-    st.markdown(f"#### 👾 {titulo}")
+    df_soma = df_comp.groupby("Jogador", as_index=False)["Valor"].sum()
+    df_soma = df_soma.sort_values("Valor", ascending=True)
     
-    colunas_por_linha = 5
-    itens = df_dados.to_dict('records')
-    for i in range(0, len(itens), colunas_por_linha):
-        cols = st.columns(colunas_por_linha)
-        pedaco = itens[i:i + colunas_por_linha]
-        for j, item in enumerate(pedaco):
-            with cols[j]:
-                icone = classificar_emoji(item["Métrica_ID"], "Mobs")
-                if item['Total_Interacoes'] > 0:
-                    st.markdown(f"<span style='font-size:17px; font-weight:600;'>{icone} {item['Métrica']}</span>", unsafe_allow_html=True)
-                    st.code(f"Kills:     {int(item['Killed'])}\nKilled By: {int(item['Killed_By'])}", language="text")
-                else:
-                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 17px; margin-bottom: 5px; font-weight: 600;'>{icone} {item['Métrica']}</p><div style='background-color: #0e1117; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px;'>Kills:     0<br>Killed By: 0</div></div>"
-                    st.markdown(estilo, unsafe_allow_html=True)
+    if df_soma["Valor"].sum() == 0: return
+    
+    fig = px.bar(df_soma, x="Valor", y="Jogador", orientation='h', text="Valor", title=f"🏆 Comparativo entre Jogadores: {titulo}")
+    fig.update_layout(
+        yaxis_title=None, xaxis_title=None, margin=dict(l=0, r=0, t=50, b=10), 
+        height=300, font=dict(size=14), title_font=dict(size=18, color='#FFAA00')
+    )
+    fig.update_traces(textposition='outside', textfont_size=14, marker_color='#FFAAFF')
+    st.plotly_chart(fig, use_container_width=True)
 
 def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar_grafico=True):
     if aplicar_filtro_zeros and ocultar_zerados:
@@ -356,7 +322,9 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
         renderizar_grafico_horizontal(df_dados, "Valor", f"Top 15 {titulo.replace('Registadas', '')}")
         
     st.markdown(f"#### {titulo}")
-    colunas_por_linha = 5
+    
+    # Reduz para 4 colunas em ecrãs menores de forma inteligente via Streamlit
+    colunas_por_linha = 4
     itens = df_dados.to_dict('records')
     for i in range(0, len(itens), colunas_por_linha):
         cols = st.columns(colunas_por_linha)
@@ -375,16 +343,33 @@ def renderizar_grade_nativa(df_dados, titulo, aplicar_filtro_zeros=True, mostrar
                 if val > 0:
                     st.metric(label=f"{icone} {item['Métrica']}", value=valor_str)
                 else:
-                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 17px; margin-bottom: -5px; font-weight: 600;'>{icone} {item['Métrica']}</p><h2 style='font-size: 2rem; margin-top: 0; font-weight: normal;'>0</h2></div>"
+                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 15px; margin-bottom: -5px; font-weight: 600;'>{icone} {item['Métrica']}</p><h2 style='font-size: 1.7rem; margin-top: 0; font-weight: normal;'>0</h2></div>"
                     st.markdown(estilo, unsafe_allow_html=True)
     st.divider()
 
 # ==========================================
-# LÓGICA DE EXIBIÇÃO POR MENU
+# LÓGICA DE EXIBIÇÃO: VISÃO GERAL VS JOGADOR
+# ==========================================
+if jogador_selecionado == "Visão Geral do Servidor":
+    st.title("🌐 Visão Geral do Servidor")
+    st.markdown("### 🗺️ Mapa ao Vivo")
+    components.iframe("http://lucas-server:25566/#world:1006:60:-697:88:0:0:0:1:flat", height=450, scrolling=True)
+    st.divider()
+    
+    exibir_kpis_detalhados(df)
+    df_ativo = df.groupby(["Categoria_Original", "Categoria", "Métrica_ID", "Métrica"], as_index=False)["Valor"].sum()
+    eh_visao_geral = True
+else:
+    st.title(f"👤 {jogador_selecionado}")
+    df_ativo = df[df["Jogador"] == jogador_selecionado]
+    eh_visao_geral = False
+
+# ==========================================
+# PROCESSAMENTO POR MENU
 # ==========================================
 st.subheader(f"{categoria_selecionada_visual.split(' ')[0]} {categoria_selecionada_visual.split(' ', 1)[1]}")
 
-# 1. Agrupamento de Itens
+# 1. Itens Consolidados
 if categoria_selecionada_visual == "🧭 Items":
     df_itens_raw = df_ativo[~df_ativo["Categoria_Original"].isin(["custom", "killed", "killed_by"])]
     dados_agrupados = {}
@@ -406,12 +391,35 @@ if categoria_selecionada_visual == "🧭 Items":
     if not df_categoria.empty:
         df_categoria['Total_Interacoes'] = df_categoria['Criado'] + df_categoria['Usado'] + df_categoria['Minerado'] + df_categoria['Quebrado'] + df_categoria['Apanhado'] + df_categoria['Caído']
         df_categoria = df_categoria.sort_values(by="Total_Interacoes", ascending=False)
-    renderizar_itens_consolidados(df_categoria, "Registo de Itens")
+        
+    if ocultar_zerados: df_categoria = df_categoria[df_categoria['Total_Interacoes'] > 0]
+    
+    renderizar_grafico_horizontal(df_categoria, "Total_Interacoes", "Top 15 Itens Mais Interagidos")
+    st.markdown("#### 📦 Registo Completo de Itens")
+    
+    colunas_por_linha = 3  # Layout adaptativo mais seguro para cartões largos
+    itens = df_categoria.to_dict('records')
+    for i in range(0, len(itens), colunas_por_linha):
+        cols = st.columns(colunas_por_linha)
+        pedaco = itens[i:i + colunas_por_linha]
+        for j, item in enumerate(pedaco):
+            with cols[j]:
+                icone = classificar_emoji(item["Métrica_ID"], "Itens")
+                st.markdown(f"**{icone} {item['Métrica']}**")
+                st.caption(f"`minecraft:{item['Métrica_ID']}`")
+                st.code(
+                    f"Times Crafted: {int(item['Criado'])}\n"
+                    f"Times Used:    {int(item['Usado'])}\n"
+                    f"Times Broken:  {int(item['Minerado'] + item['Quebrado'])}\n"
+                    f"Picked Up:     {int(item['Apanhado'])}\n"
+                    f"Dropped:       {int(item['Caído'])}", language="text"
+                )
 
 # 2. Mobs Hostis e Passivos
 elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)"]:
-    exibir_kpis_topo(df_ativo)
-    
+    if not eh_visao_geral:
+        exibir_kpis_detalhados(df_ativo)
+        
     df_mobs_raw = df_ativo[df_ativo["Categoria_Original"].isin(["killed", "killed_by"])]
     if categoria_selecionada_visual == "🧟 Hostile Mobs":
         lista_alvo = HOSTILE_MOBS
@@ -434,7 +442,26 @@ elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)
         df_categoria = df_categoria.sort_values(by="Total_Interacoes", ascending=False)
         
     ignorar_zero = False if categoria_selecionada_visual == "🧟 Hostile Mobs" else True
-    renderizar_mobs_consolidados(df_categoria, "Registo de Combate", aplicar_filtro_zeros=ignorar_zero)
+    if ignorar_zero and ocultar_zerados:
+        df_categoria = df_categoria[df_categoria['Total_Interacoes'] > 0]
+        
+    renderizar_grafico_horizontal(df_categoria, "Killed", "Top 15 Criaturas Eliminadas")
+    st.markdown("#### 👾 Registo de Combate")
+    
+    colunas_por_linha = 4
+    itens = df_categoria.to_dict('records')
+    for i in range(0, len(itens), colunas_por_linha):
+        cols = st.columns(colunas_por_linha)
+        pedaco = itens[i:i + colunas_por_linha]
+        for j, item in enumerate(pedaco):
+            with cols[j]:
+                icone = classificar_emoji(item["Métrica_ID"], "Mobs")
+                if item['Total_Interacoes'] > 0:
+                    st.markdown(f"<span style='font-size:16px; font-weight:600;'>{icone} {item['Métrica']}</span>", unsafe_allow_html=True)
+                    st.code(f"Kills:     {int(item['Killed'])}\nKilled By: {int(item['Killed_By'])}", language="text")
+                else:
+                    estilo = f"<div style='opacity: 0.3; filter: grayscale(100%); margin-bottom: 1rem;'><p style='font-size: 16px; margin-bottom: 5px; font-weight: 600;'>{icone} {item['Métrica']}</p><div style='background-color: #0e1117; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px;'>Kills:     0<br>Killed By: 0</div></div>"
+                    st.markdown(estilo, unsafe_allow_html=True)
 
 # 3. Comida
 elif categoria_selecionada_visual == "🍎 Food & Drinks":
@@ -452,7 +479,7 @@ elif categoria_selecionada_visual == "🍎 Food & Drinks":
     df_categoria = pd.DataFrame(dados_comida).sort_values(by="Valor", ascending=False)
     renderizar_grade_nativa(df_categoria, "Alimentação (Vezes Consumidas)", aplicar_filtro_zeros=False)
 
-# 4. Estatísticas Gerais (Organizadas com a nova aba de Tempo)
+# 4. Estatísticas Gerais (Com Sub-Abas Organizadas)
 elif categoria_selecionada_visual == "📄 General":
     df_geral = df_ativo[(df_ativo["Categoria_Original"] == "custom") & (~df_ativo["Métrica_ID"].isin(["deaths", "mob_kills", "player_kills"]))]
     if ocultar_zerados: df_geral = df_geral[df_geral["Valor"] > 0]
@@ -461,7 +488,8 @@ elif categoria_selecionada_visual == "📄 General":
     def classificar_subcategoria(row):
         m = row["Métrica_ID"].lower()
         if "time" in m or "minute" in m: return "⏱️ Tempo de Jogo"
-        if any(x in m for x in ["one_cm", "meter", "jump", "fly", "aviate", "swim", "walk", "crouch", "sprint", "fall", "boat", "horse", "sneak", "climb"]): return "🏃 Movimento"
+        if any(x in m for x in ["one_cm", "meter", "fly", "aviate", "swim", "walk", "crouch", "sprint", "fall", "boat", "horse", "sneak", "climb"]): return "🏃 Movimento"
+        if "jump" in m: return "🏃 Movimento"
         if any(x in m for x in ["interact", "open", "inspect", "pot", "use", "fill", "ring", "tune", "play", "enchant"]): return "🖐️ Interações"
         if any(x in m for x in ["damage", "sleep", "bed", "rest", "death", "drop"]): return "🛡️ Sobrevivência"
         if any(x in m for x in ["villager", "talked", "traded", "bred", "animal"]): return "🤝 Social & Comércio"
@@ -470,7 +498,6 @@ elif categoria_selecionada_visual == "📄 General":
     if not df_geral.empty:
         df_geral["Subcategoria"] = df_geral.apply(classificar_subcategoria, axis=1)
         
-        # Garante ordem lógica das abas
         ordem_abas = ["⏱️ Tempo de Jogo", "🏃 Movimento", "🖐️ Interações", "🛡️ Sobrevivência", "🤝 Social & Comércio", "⏱️ Diversos & Tempo"]
         lista_subcategorias = [sub for sub in ordem_abas if sub in df_geral["Subcategoria"].unique().tolist()]
         
@@ -479,9 +506,22 @@ elif categoria_selecionada_visual == "📄 General":
         for i, subcat in enumerate(lista_subcategorias):
             with abas_gerais[i]:
                 df_sub = df_geral[df_geral["Subcategoria"] == subcat]
+                
+                if eh_visao_geral and not df_sub.empty:
+                    principal_metrica = df_sub.groupby("Métrica_ID")["Valor"].sum().idxmax()
+                    nome_metrica_lider = df_sub[df_sub["Métrica_ID"] == principal_metrica]["Métrica"].iloc[0]
+                    renderizar_grafico_comparativo_jogadores(df, principal_metrica, nome_metrica_lider)
+                
                 renderizar_grade_nativa(df_sub, f"Estatísticas de {subcat.split(' ', 1)[1]}", aplicar_filtro_zeros=False, mostrar_grafico=True)
 
 # 5. Outros Filtros (Blocos)
 else:
-    df_categoria = df_ativo[(df_ativo["Categoria"] == opcoes_menu[categoria_selecionada_visual]) & (~df_ativo["Métrica_ID"].isin(["deaths", "mob_kills", "player_kills"]))]
+    categorias_alvo = opcoes_menu[categoria_selecionada_visual]
+    df_categoria = df_ativo[(df_ativo["Categoria"] == categorias_alvo) & (~df_ativo["Métrica_ID"].isin(["deaths", "mob_kills", "player_kills"]))]
+    
+    if eh_visao_geral and not df_categoria.empty:
+        top_metric_id = df_categoria.groupby("Métrica_ID")["Valor"].sum().idxmax()
+        nome_bloco_lider = df_categoria[df_categoria["Métrica_ID"] == top_metric_id]["Métrica"].iloc[0]
+        renderizar_grafico_comparativo_jogadores(df, top_metric_id, nome_bloco_lider)
+        
     renderizar_grade_nativa(df_categoria, "Estatísticas Registadas", aplicar_filtro_zeros=True)
