@@ -255,6 +255,7 @@ opcoes_menu = {
     "📄 General": "Estatísticas Gerais",
     "🧭 Items": "Agrupamento_Itens",
     "🟫 Blocks": "Blocos Minerados",
+    "💎 Minérios": "Minerios_Filtro", # Novo menu dedicado a minérios
     "🐷 Mobs (Passivos)": "Criaturas Eliminadas_Passivas", 
     "🧟 Hostile Mobs": "Criaturas Hostis",
     "🍎 Food & Drinks": "Comida"
@@ -263,12 +264,10 @@ opcoes_menu = {
 categoria_selecionada_visual = st.sidebar.selectbox("Menu", list(opcoes_menu.keys()))
 ocultar_zerados = st.sidebar.checkbox("Ocultar itens não encontrados", value=True)
 
-# Novo filtro de ordenação
 ordem_selecionada = st.sidebar.selectbox(
     "Ordenar por:",
     ["Maior Quantidade", "Menor Quantidade", "Alfabético (A-Z)"]
 )
-
 termo_busca = st.sidebar.text_input("Pesquisar na categoria...", "").lower()
 
 def aplicar_ordenacao(df_ordenar, coluna_valor="Valor"):
@@ -298,6 +297,10 @@ def exibir_kpis_detalhados(df_dados):
 
 def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     if df_grafico.empty: return
+    
+    # Exclui o 'jump' e quaisquer métricas de pulo dos gráficos de forma garantida
+    df_grafico = df_grafico[~df_grafico["Métrica_ID"].str.lower().str.contains("jump")]
+    
     df_top = df_grafico.sort_values(coluna_valor, ascending=False).head(15)
     df_top = df_top.sort_values(coluna_valor, ascending=True)
     
@@ -312,7 +315,7 @@ def renderizar_grafico_horizontal(df_grafico, coluna_valor, titulo):
     )
     fig.update_traces(textposition='outside', textfont_size=14, marker_color='#55FF55')
     st.plotly_chart(fig, use_container_width=True)
-
+    
 def renderizar_grafico_comparativo_jogadores(df_origem, metrica_filtro_id, titulo):
     df_comp = df_origem[df_origem["Métrica_ID"] == metrica_filtro_id]
     if df_comp.empty: return
@@ -443,7 +446,49 @@ if categoria_selecionada_visual == "🧭 Items":
                     f"Picked Up:     {int(item['Apanhado'])}\n"
                     f"Dropped:       {int(item['Caído'])}", language="text"
                 )
+# 1.5. Minérios Específicos
+elif categoria_selecionada_visual == "💎 Minérios":
+    palavras_chave_minerios = [
+        "diamond", "iron", "gold", "coal", "emerald", "netherite", 
+        "ancient_debris", "redstone", "lapis", "copper", "amethyst", "quartz"
+    ]
+    
+    # Filtra apenas os blocos minerados que contêm termos de minérios
+    df_mined_all = df_ativo[df_ativo["Categoria_Original"] == "mined"]
+    df_categoria = df_mined_all[df_mined_all["Métrica_ID"].apply(lambda m: any(minerio in m.lower() for minerio in palavras_chave_minerios))]
+    
+    # Garante que minérios comuns do jogo apareçam na lista mesmo com 0 se o utilizador quiser ver a coleção completa
+    minerios_padrao = [
+        "diamond_ore", "deepslate_diamond_ore", "iron_ore", "deepslate_iron_ore",
+        "gold_ore", "deepslate_gold_ore", "coal_ore", "deepslate_coal_ore",
+        "emerald_ore", "deepslate_emerald_ore", "ancient_debris",
+        "redstone_ore", "deepslate_redstone_ore", "lapis_ore", "deepslate_lapis_ore",
+        "copper_ore", "deepslate_copper_ore", "nether_quartz_ore", "nether_gold_ore"
+    ]
+    
+    # Se faltar algum minério padrão na base de dados do jogador, adiciona com valor 0 para manter o padrão "Pokédex"
+    ids_existentes = df_categoria["Métrica_ID"].tolist() if not df_categoria.empty else []
+    registros_extras = []
+    for min_id in minerios_padrao:
+        if min_id not in ids_existentes:
+            registros_extras.append({
+                "Jogador": jogador_selecionado if not eh_visao_geral else "Servidor",
+                "Categoria": "Blocos Minerados",
+                "Categoria_Original": "mined",
+                "Métrica_ID": min_id,
+                "Métrica": formatar_nome_metrica(min_id),
+                "Valor": 0
+            })
+            
+    if registros_extras:
+        df_categoria = pd.concat([df_categoria, pd.DataFrame(registros_extras)], ignore_index=True)
 
+    if eh_visao_geral and not df_categoria.empty:
+        top_metric_id = df_categoria.groupby("Métrica_ID")["Valor"].sum().idxmax()
+        nome_bloco_lider = df_categoria[df_categoria["Métrica_ID"] == top_metric_id]["Métrica"].iloc[0]
+        renderizar_grafico_comparativo_jogadores(df, top_metric_id, nome_bloco_lider)
+        
+    renderizar_grade_nativa(df_categoria, "Registo de Minérios", aplicar_filtro_zeros=ocultar_zerados)
 # 2. Mobs Hostis e Passivos (Pokédex Completa)
 elif categoria_selecionada_visual in ["🧟 Hostile Mobs", "🐷 Mobs (Passivos)"]:
     if not eh_visao_geral:
